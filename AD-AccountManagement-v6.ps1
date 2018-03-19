@@ -37,7 +37,7 @@ function ReportComputers ($adarray, $adtitle) {
         ForEach ($adobject in $adarray) { 
             if(!(Test-Connection $adobject.Name -Count 1 -ErrorAction SilentlyContinue)) {
                 Set-ADComputer -Identity $adobject.Name -Enabled $false
-                Get-ADComputer $adobject.Name | Move-ADObject -TargetPath 'OU=Dormant Computers,OU=Dormancy Process,OU=MyBusiness,DC=etech,DC=local'
+                Get-ADComputer $adobject.Name | Move-ADObject -TargetPath 'OU=Dormant Computers,DC=xxx,DC=local'
             }
         }
     } else {
@@ -57,11 +57,10 @@ $DOM = $env:USERDOMAIN
 $SVR = $env:COMPUTERNAME
 
 # Set $SMT to SMTP server
-$SMT = "smtp.sendgrid.com"
+$SMT = "smtp.xxx.xxx"
 
 # Set email To target for report
-#$ETS = "IT Operations <IT@etech.net>"
-$ETS = "Chas Jarvis <chasjarvis@etech.net>"
+$ETS = "Administrator <admin@xxx.xxx>"
 
 # Set email Cc targets for report
 #$ETC = @("Technical Design Office <TDO-Mailbox@domain.ext>","Compliance Office <Compliance-Mailbox@domain.ext>")            
@@ -73,7 +72,7 @@ $GDF = Get-Date -format "yyyyMMdd"
 $EMS = "$GDF-$DOM Active Directory Compliance Check"
 
 # Set output filenames
-$root = "\\jim\CD-BACKUPS\PowerShell"
+$root = "C:\PowerShell"
 $OUT = "$root\ADDS\{0:yyyyMMdd}-AD-AccountManagement.html" -f [DateTime]::now                                                   
 $XMLFile = "$root\ADDS\AD-Groups.xml"
 
@@ -95,19 +94,8 @@ $NEW = 7
 
 # Set search locations using the OU DistinguishedName
 $OUDN = @{
-    1 = "OU=Admin,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    2 = "OU=Accounts,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    3 = "OU=Audit,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    4 = "OU=Business Analysts,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    5 = "OU=Developers,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    6 = "OU=Directors,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    7 = "OU=IT,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    8 = "OU=Sales,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    9 = "OU=SBSUsers,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    10 = "OU=Support,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    11 = "OU=Test Accounts,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    12 = "OU=Testers,OU=Users,OU=MyBusiness,DC=etech,DC=local";
-    13 = "OU=Third Party,OU=Users,OU=MyBusiness,DC=etech,DC=local";
+    1 = "OU=Admin,CN=Users,DC=xxx,DC=local";
+    2 = "OU=Accounts,CN=Users,DC=xxx,DC=local";
 }
 
 # Loop through OUDNs 1 to however many
@@ -116,17 +104,6 @@ ForEach($DN in $OUDN) {
     #Write headers
     if ($DN -eq $OUDN[1]) {$OUTA += "<h2>ADMIN USER ACCOUNTS</h2>"}
     if ($DN -eq $OUDN[2]) {$OUTA += "<br /><h2>ACCOUNTS USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[3]) {$OUTA += "<br /><h2>AUDIT USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[4]) {$OUTA += "<br /><h2>BUSINESS ANALYST USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[5]) {$OUTA += "<br /><h2>DEVELOPER USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[6]) {$OUTA += "<br /><h2>DIRECTOR USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[7]) {$OUTA += "<br /><h2>IT USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[8]) {$OUTA += "<br /><h2>SALES USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[9]) {$OUTA += "<br /><h2>SBSUSERS USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[10]) {$OUTA += "<br /><h2>SUPPORT USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[11]) {$OUTA += "<br /><h2>TEST USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[12]) {$OUTA += "<br /><h2>TESTERS USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[13]) {$OUTA += "<br /><h2>THIRD PARTY USER ACCOUNTS</h2>"}
 
     # Set loop counter
     $LPC = 0
@@ -301,10 +278,10 @@ ForEach($DN in $OUDN) {
 
 $GRPS = @{
     1 = "Administrators","Administrators"
-    2 = "DomainAdministrators","Domain Administrators"
+    2 = "EnterpriseAdmins","Enterprise Admins"
     3 = "DomainAdmins","Domain Admins"
-    4 = "EnterpriseAdmins","Enterprise Admins"
-    5 = "ITOperations","IT Operations"
+    4 = "DomainAdmins","Domain Admins"
+    5 = "DomainAdmins","Domain Admins"
 }    
 
 # Test for existing XML file, create framework if not found
@@ -534,13 +511,13 @@ $then = (Get-Date).AddDays(-60)
 # Call the move AD objects function and create HTML output
 $OUTD = "<hr /><br /><h1>Redundant Systems</h1>"
 
-$adcomputers = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'OU=SBSComputers,OU=Computers,OU=MyBusiness,DC=etech,DC=local' -SearchScope OneLevel | Select-Object Name, Description
+$adcomputers = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'DC=xxx,DC=local' -SearchScope OneLevel | Select-Object Name, Description
 $OUTD += ReportComputers $adcomputers "Computers"
 
-$addesktops = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'OU=Desktops,OU=SBSComputers,OU=Computers,OU=MyBusiness,DC=etech,DC=local' | Select-Object Name, Description
+$addesktops = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'DC=xxx,DC=local' | Select-Object Name, Description
 $OUTD += ReportComputers $addesktops "Desktops"
 
-$adlaptops = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'OU=Laptops,OU=SBSComputers,OU=Computers,OU=MyBusiness,DC=etech,DC=local' | Select-Object Name, Description
+$adlaptops = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'DC=xxx,DC=local' | Select-Object Name, Description
 $OUTD += ReportComputers $adlaptops "Laptops"
 
 # Create Email
@@ -620,7 +597,7 @@ $FRAG6 = $OUTD | Out-String
 $MSG = New-Object Net.Mail.MailMessage
 $MSG.Body = $OUTC
 $MSG.IsBodyHtml = $true
-$MFR = "IT Operations <it@etech.net>"
+$MFR = "IT Operations <xx@xxx.xxx>"
 
 # Pull WSUS statistics file
 $WSUS = "$root\WSUS\{0:yyyyMMdd}-WSUS-Compliance-Statistics.html" -f [DateTime]::now
@@ -630,9 +607,9 @@ if(Test-Path $WSUS) {
     $ATT = @($OUT)
 }
 
-# Mail Account credentials
-$SecPWD = ConvertTo-SecureString "A1Mxhvx2jAFmdY5D88RN" -AsPlainText -Force
-$MSC = New-Object System.Management.Automation.PSCredential("it@etech.net", $SecPWD)
+# Mail Account credentials        
+$SecPWD = ConvertTo-SecureString "vTbG8JkwP98JnfSTb61Q" -AsPlainText -Force
+$MSC = New-Object System.Management.Automation.PSCredential("xx@xxx.xxx", $SecPWD)
 
 # Send Email
 Send-MailMessage -To $ETS -Subject $EMS -Body $MSG.Body -SmtpServer $SMT -From $MFR -BodyAsHtml -Attachments $ATT -Credential $MSC -Port 587
