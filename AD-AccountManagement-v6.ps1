@@ -1,24 +1,98 @@
-﻿<#*****************************************************************************************************
-  FILENAME: AD-AccountManagement.ps1
-  AUTHOR  : Darren Rolfe <darren.rolfe@rolfetechnical.uk>
-  DATE    : 19 MAR 18
-  VERSION : 6
-  DESC    : Account Management of Active Directory users within specific OUs
+﻿<#*************************************************************************************************************************#>
 
-            Admin (OU=1) & User (OU>1) Accounts disabled after determined number of days
-            User Accounts deleted after determined number of days
-            Discovery of new accounts created within the last 7 days
-            
-            Group membership checks for addition/removal of users within sensitive groups
+ $AUTHOR   = "Darren Rolfe <darren.rolfe@rolfetechnical.uk>"
+ $DATE     = "20 MAR 2018"
+ $VERSION  = "6"
+ $FILENAME = (Split-Path $MyInvocation.MyCommand.Definition -Leaf).TrimEnd(".ps1")
 
-            Email reports to primary email ($ETS) and optionally secondary email ($ETC) accounts
-            Email attachment with CSS formatted HTML for good readability
-            Email attachment of WSUS script output is present
+<#*************************************************************************************************************************
+
+  DESC     = Account Management of Active Directory users within specific OUs
+
+             Admin (OU=1) & User (OU>1) Accounts disabled after determined number of days
+             User Accounts deleted after determined number of days
+             Discovery of new accounts created within the last 7 days
             
-            Check for unused workstations/laptops with movement of object into dormant OU
+             Group membership checks for addition/removal of users within sensitive groups
+
+             Email reports to primary email ($ETS) and optionally secondary email ($ETC) accounts
+             Email attachment with CSS formatted HTML for good readability
+             Email attachment of WSUS script output is present
             
-  *****************************************************************************************************#>
-  
+             Check for unused workstations/laptops with movement of object into dormant OU
+            
+  *************************************************************************************************************************#>
+
+#############################################################################################################################
+#                                                                                                                           #
+### Variables                                                                                                               #
+#                                                                                                                           #
+# Environment Preferences                                                                                                   #
+$VerbosePreference = "SilentlyContinue"
+$ConfirmPreference = "None"
+#                                                                                                                           #
+# Set $SMT to SMTP server                                                                                                   #
+$SMT = "smtp.domain.ext"
+#                                                                                                                           #
+# Mail Account credentials                                                                                                  #
+$SecPWD = ConvertTo-SecureString "vTbG8JkwP98JnfSTb61Q" -AsPlainText -Force
+$MSC = New-Object System.Management.Automation.PSCredential("it@domain.ext", $SecPWD)
+#                                                                                                                           #
+# Email From                                                                                                                #
+$MFR = "IT Operations <it@domain.ext>"
+#                                                                                                                           #
+# Set email To target for report                                                                                            #
+$ETS = "Administrators <administrators@domain.ext>"
+#                                                                                                                           #
+# Set email Cc targets for report                                                                                           #
+$ETC = @("Technical Design Office <TDO-Mailbox@domain.ext>","Compliance Office <Compliance-Mailbox@domain.ext>")            
+#                                                                                                                           #
+# Set output filenames                                                                                                      #
+$root = "\\server02.domain.ext\PowerShell"
+$OUT = "$root\ADDS\{0:yyyyMMdd}-AD-AccountManagement.html" -f [DateTime]::now                                                   
+$XMLFile = "$root\ADDS\AD-Groups.xml"
+#                                                                                                                           #
+# WSUS Statistics File                                                                                                      #
+$WSUS = "$root\WSUS\{0:yyyyMMdd}-WSUS-Compliance-Statistics.html" -f [DateTime]::now
+#                                                                                                                           #
+# Set number of days until unused accounts are disabled                                                                     #
+$NOD = 90
+#                                                                                                                           #
+# Set number of days until disabled are deleted                                                                             #
+$NUD = $NOD+500
+#                                                                                                                           #
+# Set number of days to report new accounts                                                                                 #
+$NEW = 7
+#                                                                                                                           #
+# Set search locations using the OU DistinguishedName and report headers                                                    #
+#        Distinguished Name                                           HTML OU Header                                        #
+$OUDN = @{                                                                                                                  #
+    1 = "OU=Admin,CN=Users,DC=server,DC=local",                      "<h2>ADMIN USER ACCOUNTS</h2>"
+    2 = "OU=Accounts,CN=Users,DC=server,DC=local",                   "<br /><h2>ACCOUNTS USER ACCOUNTS</h2>"
+}                                                                                                                           #
+#                                                                                                                           #
+# Set AD groups to monitor membership                                                                                       #
+#        Group without Spaces    Actual Group Name                                                                          #
+$GRPS = @{                                                                                                                  #
+    1 = "Administrators",       "Administrators"
+    2 = "DomainAdministrators", "Domain Administrators"
+    3 = "DomainAdmins",         "Domain Admins"
+    4 = "EnterpriseAdmins",     "Enterprise Admins"
+    5 = "ITOperations",         "IT Operations"
+}                                                                                                                           #
+#                                                                                                                           #
+# Set OUs to check for dormant workstations                                                                                 #
+#        Distinguished Name - Single level scope                     Human Friendly Name                                    #
+$DORMANT = @{                                                                                                               #
+    1 = "OU=Computers,OU=Computers,DC=server,DC=local",             "Computers"
+    2 = "OU=Desktops,OU=Computers,DC=server,DC=local",              "Desktops"
+    3 = "OU=Laptops,OU=Computers,DC=server,DC=local",               "Laptops"
+}                                                                                                                           #
+#                                                                                                                           #
+#############################################################################################################################
+
+### Code
+
 # Manipulate each array, Moves array of AD objects into dormant OU
 function ReportComputers ($adarray, $adtitle) {
     if ($OUTE) { Clear-Variable OUTE }
@@ -36,8 +110,8 @@ function ReportComputers ($adarray, $adtitle) {
         $OUTE += "<h3>$adtitle</h3><table><tr><th>$adotitle</th><th>Description</th></tr>$adovar</table>"
         ForEach ($adobject in $adarray) { 
             if(!(Test-Connection $adobject.Name -Count 1 -ErrorAction SilentlyContinue)) {
-                Set-ADComputer -Identity $adobject.Name -Enabled $false
-                Get-ADComputer $adobject.Name | Move-ADObject -TargetPath 'OU=Dormant Computers,DC=xxx,DC=local'
+                #Set-ADComputer -Identity $adobject.Name -Enabled $false                                                                        ###################################
+                #Get-ADComputer $adobject.Name | Move-ADObject -TargetPath 'OU=Dormant Computers,OU=Dormancy Process,OU=MyBusiness,DC=server,DC=local'  ############################
             }
         }
     } else {
@@ -46,9 +120,7 @@ function ReportComputers ($adarray, $adtitle) {
     return $OUTE
 }
 
-# Environment Preferences
-$VerbosePreference = "SilentlyContinue"
-$ConfirmPreference = "None"
+### Active Directory Account Check
 
 # Set $DOM to domain name
 $DOM = $env:USERDOMAIN
@@ -56,25 +128,11 @@ $DOM = $env:USERDOMAIN
 # Set $SVR to the current servername
 $SVR = $env:COMPUTERNAME
 
-# Set $SMT to SMTP server
-$SMT = "smtp.xxx.xxx"
-
-# Set email To target for report
-$ETS = "Administrator <admin@xxx.xxx>"
-
-# Set email Cc targets for report
-#$ETC = @("Technical Design Office <TDO-Mailbox@domain.ext>","Compliance Office <Compliance-Mailbox@domain.ext>")            
-
 # Date formatted in YYYYMMDD    
 $GDF = Get-Date -format "yyyyMMdd"
 
 # Set Email Subject
 $EMS = "$GDF-$DOM Active Directory Compliance Check"
-
-# Set output filenames
-$root = "C:\PowerShell"
-$OUT = "$root\ADDS\{0:yyyyMMdd}-AD-AccountManagement.html" -f [DateTime]::now                                                   
-$XMLFile = "$root\ADDS\AD-Groups.xml"
 
 #Create output arrays for the logging
 $OUTA = @()
@@ -83,27 +141,12 @@ $OUTB = @()
 # Create output file
 Out-File $OUT -Encoding Unicode
 
-# Set number of days until unused accounts are disabled
-$NOD = 90
-
-# Set number of days until disabled are deleted
-$NUD = $NOD+365
-
-# Set number of days to report new accounts
-$NEW = 7
-
-# Set search locations using the OU DistinguishedName
-$OUDN = @{
-    1 = "OU=Admin,CN=Users,DC=xxx,DC=local";
-    2 = "OU=Accounts,CN=Users,DC=xxx,DC=local";
-}
-
 # Loop through OUDNs 1 to however many
-ForEach($DN in $OUDN) {
+For($DNE = 1; $DNE -le $OUDN.Count; $DNE++) {
 
-    #Write headers
-    if ($DN -eq $OUDN[1]) {$OUTA += "<h2>ADMIN USER ACCOUNTS</h2>"}
-    if ($DN -eq $OUDN[2]) {$OUTA += "<br /><h2>ACCOUNTS USER ACCOUNTS</h2>"}
+    # Pull DN and header from array
+    $DN = $OUDN[$DNE][0]
+    $OUTA += $OUDN[$DNE][1]
 
     # Set loop counter
     $LPC = 0
@@ -276,13 +319,7 @@ ForEach($DN in $OUDN) {
     } While ($LPC -le 3)
 }
 
-$GRPS = @{
-    1 = "Administrators","Administrators"
-    2 = "EnterpriseAdmins","Enterprise Admins"
-    3 = "DomainAdmins","Domain Admins"
-    4 = "DomainAdmins","Domain Admins"
-    5 = "DomainAdmins","Domain Admins"
-}    
+### Active Directory Group Membership Check
 
 # Test for existing XML file, create framework if not found
 if(Test-Path $XMLFile) {
@@ -297,11 +334,11 @@ if(Test-Path $XMLFile) {
 }
 
 # Execute for each Active Directory group
-ForEach($GRP in $GRPS) {
+For($GRP = 1; $GRP -le $GRPS.Count; $GRP++) {
 
     # Pull AD Group name from array
-    $GRPName = $GRP[1]
-    $XMLName = $GRP[0]
+    $GRPName = $GRPS[$GRP][1]
+    $XMLName = $GRPS[$GRP][0]
 
     # Populate list of XML users
     $SrchXml = Select-Xml "//MonitoredGroups/$XMLName/USR/SAM" $GRPXml
@@ -504,63 +541,74 @@ ForEach($GRP in $GRPS) {
 Write-Verbose "OUTB: '$OUTB'"
 if (!$OUTB) { $OUTB = "<br /><h3>No irregularities have been detected in any of the monitored groups.</h3>" }
 
-# Check of unused workstations/laptops
+### Unused Workstations Check
+
 # The 60 is the number of days from today since the last logon.
 $then = (Get-Date).AddDays(-60)
 
 # Call the move AD objects function and create HTML output
 $OUTD = "<hr /><br /><h1>Redundant Systems</h1>"
 
-$adcomputers = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'DC=xxx,DC=local' -SearchScope OneLevel | Select-Object Name, Description
-$OUTD += ReportComputers $adcomputers "Computers"
+# Loop through dormant OUs
+For($DORM = 1; $DORM -le $DORMANT.Count; $DORM++) {
 
-$addesktops = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'DC=xxx,DC=local' | Select-Object Name, Description
-$OUTD += ReportComputers $addesktops "Desktops"
+    # Split dorm contents
+    $DORMOU = $DORMANT[$DORM][0]
+    $DORMName = $DORMANT[$DORM][1]
 
-$adlaptops = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase 'DC=xxx,DC=local' | Select-Object Name, Description
-$OUTD += ReportComputers $adlaptops "Laptops"
+    # Return OU objects
+    $adobjects = Get-ADComputer -Property Name,Description,lastLogonDate -Filter {lastLogonDate -lt $then} -SearchBase "$DORMOU" -SearchScope OneLevel | Select-Object Name, Description
+    $OUTD += ReportComputers $adobjects $DORMName
+}
+
+### Email / Closure of Script
 
 # Create Email
-$Head = "<title>Active Directory Compliance Check</title>"
+$Head = "<title>Active Directory Compliance Check</title><link href='https://fonts.googleapis.com/css?family=Jura:500|Walter+Turncoat' rel='stylesheet'>"
 $Head += "<style>
             body {
                 font-family: Calibri, Arial;
-                font-size: 10pt;
+                font-size: 12pt;
                 color: #333;
                 background-color: #ccc;
                 margin: 10px;
             }
             th {
                 font-weight: bold;
+                font-size: 16px;
                 color: white;
                 background-color: #333;
                 width: 140px;
+                padding: 5px;
             }
             table {
                 border: 1px #000000 solid;
                 border-collapse: collapse;
                 padding-bottom: 30px;
+                width: 800px;
             }
             .desc {
                 width: 340px;
             }
             .date {
-                font-size: 10pt;
+                font-size: 14pt;
                 font-weight: bold;
-                padding-left: 700px;
+                padding-left: 600px;
             }
             h1 {
                 font-size: 26pt;
                 font-weight: bold;
                 padding: 0px;
+                padding-left: 100px;
                 margin-bottom: -10px;
             }
             h1.bighead {
                 font-family: Segoe, Tahoma, Arial, Helvetica;
             }
             h2 {
+                font-family: 'Walter Turncoat', cursive, Arial;
                 font-size: 16pt;
-                padding-left: 30px;
+                padding-left: 50px;
                 padding-bottom: 0px;
                 padding-top: 0px;
             }
@@ -574,14 +622,22 @@ $Head += "<style>
                 text-align: left;
                 color: #333;
             }
+            div.tail {
+                font-family: 'Jura', sans-serif;
+                font-size: 12px;
+                font-decoration: italic;
+                padding-left: 50px;
+            }
             td {
-                        border: 1px solid #000;
+                border: 1px solid #000;
+                font-size: 14px;
+                padding: 2px;
             }
             td.row1 {
-                        background-color: #eee;
+                background-color: #eee;
             }
             td.row2 {
-                        background-color: #ddd;
+                background-color: #ddd;
             }
           </style>"
 $TODAY = Get-Date -Format D
@@ -589,7 +645,7 @@ $FRAG1 = "Greetings!<br /><br />&nbsp;&nbsp;&nbsp;See below for results of the l
 $FRAG2 = $OUTA | Out-String
 $FRAG3 = "<hr /><h1>AD Group Membership Monitoring</h1>"
 $FRAG4 = $OUTB | Out-String
-$FRAG5 = "<br /><hr /><br />Regards<br /><br />&nbsp;&nbsp;$SVR"
+$FRAG5 = "<br /><hr /><br />Regards<br /><br />&nbsp;&nbsp;$SVR<br /><br /><br /><div class=''>$FILENAME | version: $VERSION | $DATE | $AUTHOR</div>"
 $FRAG6 = $OUTD | Out-String
 ($OUTC = ConvertTo-Html -Head $Head -Body "<h1 class='bighead'>Active Directory Compliance Check</h1><p class='date'>Created $TODAY</p>",$FRAG1,$FRAG2,$FRAG3,$FRAG4,$FRAG6,$FRAG5) | Out-File $OUT
 
@@ -597,21 +653,15 @@ $FRAG6 = $OUTD | Out-String
 $MSG = New-Object Net.Mail.MailMessage
 $MSG.Body = $OUTC
 $MSG.IsBodyHtml = $true
-$MFR = "IT Operations <xx@xxx.xxx>"
 
 # Pull WSUS statistics file
-$WSUS = "$root\WSUS\{0:yyyyMMdd}-WSUS-Compliance-Statistics.html" -f [DateTime]::now
 if(Test-Path $WSUS) {
     $ATT = @($OUT, $WSUS)
 } else {
     $ATT = @($OUT)
 }
 
-# Mail Account credentials        
-$SecPWD = ConvertTo-SecureString "vTbG8JkwP98JnfSTb61Q" -AsPlainText -Force
-$MSC = New-Object System.Management.Automation.PSCredential("xx@xxx.xxx", $SecPWD)
-
 # Send Email
-Send-MailMessage -To $ETS -Subject $EMS -Body $MSG.Body -SmtpServer $SMT -From $MFR -BodyAsHtml -Attachments $ATT -Credential $MSC -Port 587
+Send-MailMessage -To $ETS -Subject $EMS -Body $MSG.Body -SmtpServer $SMT -From $MFR -BodyAsHtml -Attachments $ATT -Credential $MSC -Port 587 -Cc $ETC
 
 # End 
